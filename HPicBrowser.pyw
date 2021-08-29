@@ -790,6 +790,8 @@ def getImage():
 def draw():
     global drawCancel, lastImageAddr, drawStep, nowImageAddr, SCREEN_WIDTH, SCREEN_HEIGHT
     if not pauseAll:
+        t = threading.Thread(target=fillImageCache, args=())
+        t.setDaemon(True)
         if drawCancel:
             drawCancel = False
             drawStep = 0
@@ -799,7 +801,7 @@ def draw():
                 SCREEN_WIDTH = top.winfo_screenwidth()
                 SCREEN_HEIGHT = top.winfo_screenheight()
                 top.geometry("%dx%d" % (SCREEN_WIDTH, SCREEN_HEIGHT))
-            while not imageCache.full():
+            while (not imageCache.full()) and (not t.join()):
                 pass
             photo = ImageTk.PhotoImage(imageCache.get())
             label.configure(image=photo)
@@ -808,10 +810,8 @@ def draw():
             nowImageAddr = imageAddrCache[0]
             imageAddrCache.pop(0)
             # top.update()
-            t = threading.Thread(target=fillImageCache,args=())
-            t.setDaemon(True)
             t.start()
-            #fillImageCache()
+            # fillImageCache()
         if (drawStep * LOOP_STEP) > LOOP_TIME:
             drawStep = 0
         else:
