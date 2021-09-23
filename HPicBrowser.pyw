@@ -68,11 +68,11 @@ BACKGROUND_COLOR = 'black'  # 背景颜色,可选 black,white,pink,green,blue,re
 #           ...
 #           F12
 
-SHARPEN_ON = True # 开启锐化。
+SHARPEN_ON = True  # 开启锐化。
 FULL_SCREEN = True  # 全屏。只有不全屏，下面的FACTOR_WIDTH、FACTOR_HEIGHT、POSITION才会生效。
 FACTOR_WIDTH = 0.5  # 打开时的窗口相对于屏幕的宽度比例
 FACTOR_HEIGHT = FACTOR_WIDTH  # 打开时的窗口相对于屏幕的高度比例
-SCREEN_POSITION = 1  # 如下图所示。数字代表了打开程序时，程序出现在屏幕中的位置
+SCREEN_POSITION = 4  # 如下图所示。数字代表了打开程序时，程序出现在屏幕中的位置
 
 # POSITION 可选位置：
 # 左上角 1 2 3 右上角
@@ -480,8 +480,6 @@ def fillImageCache():
                     imageCache.put(imageResize(imageTkTemp))
         else:
             if tryTime > 10:
-                timeEnd = time.time()
-                addTime(timeStart, timeEnd)
                 return 1
             else:
                 tryTime = tryTime + 1
@@ -787,11 +785,13 @@ def getImage():
         return lastImageAddr
 
 
+threadRead = threading.Thread(target=fillImageCache, args=())
+threadRead.setDaemon(True)
+
+
 def draw():
-    global drawCancel, lastImageAddr, drawStep, nowImageAddr, SCREEN_WIDTH, SCREEN_HEIGHT
+    global drawCancel, lastImageAddr, drawStep, nowImageAddr, SCREEN_WIDTH, SCREEN_HEIGHT, threadRead
     if not pauseAll:
-        t = threading.Thread(target=fillImageCache, args=())
-        t.setDaemon(True)
         if drawCancel:
             drawCancel = False
             drawStep = 0
@@ -801,7 +801,7 @@ def draw():
                 SCREEN_WIDTH = top.winfo_screenwidth()
                 SCREEN_HEIGHT = top.winfo_screenheight()
                 top.geometry("%dx%d" % (SCREEN_WIDTH, SCREEN_HEIGHT))
-            while (not imageCache.full()) and (not t.join()):
+            while (not imageCache.full()) and (not threadRead.join()):
                 pass
             photo = ImageTk.PhotoImage(imageCache.get())
             label.configure(image=photo)
@@ -810,7 +810,9 @@ def draw():
             nowImageAddr = imageAddrCache[0]
             imageAddrCache.pop(0)
             # top.update()
-            t.start()
+            threadRead = threading.Thread(target=fillImageCache, args=())
+            threadRead.setDaemon(True)
+            threadRead.start()
             # fillImageCache()
         if (drawStep * LOOP_STEP) > LOOP_TIME:
             drawStep = 0
@@ -828,7 +830,7 @@ if __name__ == '__main__':
             FILE_LIB.append(DEFAULT_LIB)
     else:
         for folder in sys.argv[1:]:
-            FILE_LIB.append(folder)
+            FILE_LIB.append(getRealLnk(folder))
     if FULL_SCREEN:
         SCREEN_WIDTH = top.winfo_screenwidth()
         SCREEN_HEIGHT = top.winfo_screenheight()
@@ -853,3 +855,4 @@ if __name__ == '__main__':
             print("Cannot find photo.")
     top.after(0, draw)
     top.mainloop()
+
