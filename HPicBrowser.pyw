@@ -13,6 +13,8 @@ import sys
 import threading
 import tkinter as tk
 from queue import Queue
+import io
+import urllib.request
 
 try:
     import pypinyin
@@ -49,13 +51,19 @@ LOOP_TIME = 2000  # 幻灯片播放间隔（单位：毫秒）
 SHUFFLE = True  # 是否开启图片随机播放
 TWO_COLUMNS = True  # 若为真，则屏幕的宽大于高时，当随机到照片为竖屏时，一页浏览两张竖屏照片。屏幕的宽小于于高时，当随机到照片为横屏时，一页浏览两张横屏照片
 WHEN_REACH_END_OF_FOLDER = FOLDER_CROSS  # 顺序播放时，到文件夹末尾后的行为，FOLDER_REPEAT为文件夹内循环，FOLDER_CROSS为进入下一文件夹
-MUSIC_LIB = ['E:/Music']  # 音乐库路径
-DEFAULT_LIB = './pic/'  # 默认库。如果直接打开该Python文件，则会直接开始播放默认库。
-MY_SELECT_LIB = [['./pic', './pic/good', './pic/best', './pic/',
-                  'E:/VirtualBox/zz', 'E:/VirtualBox/nmz',
-                  'E:/VirtualBox/xww', 'E:/VirtualBox/saku',
-                  'E:/VirtualBox/zyx']
-             , ['E:/VirtualBox/wyc'] # 你的图片库路径。需要自己设置。
+MUSIC_LIB = ['E:/VirtualBox/VirtualBox/Music']  # 音乐库路径
+DEFAULT_LIB = './pic2/'  # 默认库。如果直接打开该Python文件，则会直接开始播放默认库。
+MY_SELECT_LIB = [['E:/VirtualBox/VirtualBox/写真/', 'E:/VirtualBox/爆炸写真杂/', 'E:/VirtualBox/杂图', 'E:/VirtualBox/非高清图合集',
+                  'E:/VirtualBox/VirtualBox/写真/芝芝', 'E:/VirtualBox/VirtualBox/写真/李可可',
+                  'E:/VirtualBox/VirtualBox/写真/王语纯',
+                  'E:/VirtualBox/VirtualBox/写真/朱可儿', 'E:/VirtualBox/VirtualBox/写真/糯美子',
+                  'E:/VirtualBox/VirtualBox/写真/筱慧']
+    , ['E:/VirtualBox/VirtualBox/写真/Saku收集', 'E:/VirtualBox/VirtualBox/写真/周于希/', 'E:/VirtualBox/VirtualBox/写真/杨晨晨/', 'E:/VirtualBox/VirtualBox/写真/黄楽然',
+       'E:/VirtualBox/VirtualBox/写真/尤妮丝', 'E:/VirtualBox/VirtualBox/写真/妲己', 'E:/VirtualBox/VirtualBox/写真/心妍小公主',
+       'E:/VirtualBox/VirtualBox/写真/绯月樱', 'E:/VirtualBox/VirtualBox/写真/徐微微', 'E:/VirtualBox/VirtualBox/写真/果儿Victoria'],
+                 ['E:/VirtualBox/欧美/写真快捷', 'E:/VirtualBox/VirtualBox/avi/JULIA/写真'],
+                 ['E:/VirtualBox/VirtualBox/动漫图']
+                 ]  # 你的图片库路径
 SHOULD_NOT_GO_INTO_THESE_FOLDERS = ["一般", "不好看", "没法看", "视频"]  # 如果文件夹名称包含其中任意一个关键字，则不进入该文件夹
 BACKGROUND_COLOR = 'black'  # 背景颜色,可选 black,white,pink,green,blue,red,orange等，或者直接设为'#FFDAB9'等值
 
@@ -68,8 +76,8 @@ BACKGROUND_COLOR = 'black'  # 背景颜色,可选 black,white,pink,green,blue,re
 #           F12
 
 SHARPEN_ON = True  # 开启锐化。
-FULL_SCREEN = True  # 全屏。只有不全屏，下面的FACTOR_WIDTH、FACTOR_HEIGHT、POSITION才会生效。
-FACTOR_WIDTH = 0.5  # 打开时的窗口相对于屏幕的宽度比例
+FULL_SCREEN = True # 全屏。只有不全屏，下面的FACTOR_WIDTH、FACTOR_HEIGHT、POSITION才会生效。
+FACTOR_WIDTH = 0.05  # 打开时的窗口相对于屏幕的宽度比例
 FACTOR_HEIGHT = FACTOR_WIDTH  # 打开时的窗口相对于屏幕的高度比例
 SCREEN_POSITION = 4  # 如下图所示。数字代表了打开程序时，程序出现在屏幕中的位置
 
@@ -444,7 +452,12 @@ def fillImageCache():
         if imageTemp != '' and tryTime <= 10:
             try:
                 # print(imageTemp)
-                imageTkTemp = Image.open(imageTemp)
+                if imageTemp.startswith("http"):
+                    image_bytes = urllib.request.urlopen(imageTemp).read()
+                    data_stream = io.BytesIO(image_bytes)
+                    imageTkTemp = Image.open(data_stream)
+                else:
+                    imageTkTemp = Image.open(imageTemp)
             except:
                 tryTime = tryTime + 1
                 continue
