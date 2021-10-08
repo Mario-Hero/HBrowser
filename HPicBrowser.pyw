@@ -4,16 +4,15 @@
 # Created by Mario Chen, 23.05.2021, Shenzhen
 # My Github site: https://github.com/Mario-Hero
 
-from queue import Queue
+import math
+import os
 import platform
 import random
-import os
-import math
-import time
-import sys
 import re
-import tkinter as tk
+import sys
 import threading
+import tkinter as tk
+from queue import Queue
 
 try:
     import pypinyin
@@ -32,7 +31,7 @@ except:
 
 if platform.system() == 'Windows':
     import win32com.client
-
+    import pythoncom
     isWindows = True
 else:
     isWindows = False
@@ -111,10 +110,6 @@ NEED_UPDATE = True
 
 top = tk.Tk()
 player = vlcVidPlayer.Player()
-if isWindows:
-    shell = win32com.client.Dispatch("WScript.Shell")
-else:
-    shell = ''
 
 
 def generateScreenPosition():
@@ -169,7 +164,7 @@ def findName(name, folder):
         return False
 
 
-def findFolder(name, folderPath):
+def findFolder(name, folderPath, level=1):
     if os.path.isdir(folderPath):
         file_list = os.listdir(folderPath)
         for fld in file_list:
@@ -177,19 +172,26 @@ def findFolder(name, folderPath):
             if os.path.isdir(temp) and folderOK(temp):
                 if findName(name, os.path.split(temp)[1]):
                     return temp
-        for fld in file_list:
-            temp = getRealLnk(os.path.join(folderPath, fld))
-            if os.path.isdir(temp) and folderOK(temp):
-                resultFind = findFolder(name, temp)
-                if resultFind:
-                    return True
+        if level >= 1:
+            for fld in file_list:
+                temp = getRealLnk(os.path.join(folderPath, fld))
+                if os.path.isdir(temp) and folderOK(temp):
+                    resultFind = findFolder(name, temp, level-1)
+                    if resultFind:
+                        return temp
+        else:
+            return ''
     else:
         return ''
     return ''
 
 
 def drawCancelRemoveAll(goCancel=False):
-    global drawCancel, lastImageAddr
+    global drawCancel, lastImageAddr, threadRead, getImageTry
+    #if threadRead.is_alive():
+        #threadRead.join(0)
+        #threading.Thread._Thread__stop(threadRead)
+    getImageTry = 0
     imageCache.queue.clear()
     imageAddrCache.clear()
     lastImageAddr = nowImageAddr
@@ -199,14 +201,14 @@ def drawCancelRemoveAll(goCancel=False):
 
 
 def isLnk(name):
-    return name.lower().endswith('.lnk')
+    return name.lower().endswith('.lnk') or name.lower().endswith('.url')
 
 
 def readLnk(lnk):
     if isWindows:
-        shortcut = shell.CreateShortCut(lnk)
-        # print(shortcut.Targetpath)
-        return shortcut.Targetpath
+        pythoncom.CoInitialize()
+        shell = win32com.client.Dispatch("WScript.Shell")
+        return shell.CreateShortCut(lnk).Targetpath
     else:
         return ''
 
@@ -420,64 +422,66 @@ def picRatioCanCombine(img):
     else:
         return (img.size[0] / img.size[1]) > (2 * SCREEN_WIDTH / SCREEN_HEIGHT)
 
-
 getImageTry = 0
-
-
 def fillImageCache():
-    global getImageTry, lastImageAddr, imageCache
-    if getImageTry >= 5:
-        return 1
+    global imageCache, lastImageAddr,getImageTry
     tryTime = 0
+    if getImageTry > 5:
+        return 1
     # timeStart = time.time()
     while not imageCache.full():
         try:
             imageTemp = getImage()
             # print(imageTemp)
         except:
-            if getImageTry >= 5:
+            if getImageTry >= 10:
                 return 1
-            getImageTry = getImageTry + 1
-            continue
+            else:
+                getImageTry = getImageTry + 1
+                continue
         else:
             getImageTry = 0
-        if imageTemp != '':
+        if imageTemp != '' and tryTime <= 10:
             try:
                 # print(imageTemp)
                 imageTkTemp = Image.open(imageTemp)
             except:
+                tryTime = tryTime + 1
                 continue
             else:
-                if SHUFFLE and TWO_COLUMNS and picRatioCanCombine(imageTkTemp):
-                    nextImageTemp = nextPic(imageTemp)
-                    if nextImageTemp == '':
-                        imageAddrCache.append(imageTemp)
-                        lastImageAddr = imageTemp
-                        imageCache.put(imageResize(imageTkTemp))
-                    else:
-                        imageTkTemp2 = Image.open(nextImageTemp)
-                        temp2TryTime = 0
-                        while not picRatioCanCombine(imageTkTemp2):
-                            nextImageTemp = nextPic(nextImageTemp)
-                            temp2TryTime = temp2TryTime + 1
-                            if temp2TryTime > 10:
-                                break
-                            if nextImageTemp != '':
-                                imageTkTemp2 = Image.open(nextImageTemp)
-                            else:
-                                continue
-                        if temp2TryTime > 10:
+                try:
+                    if SHUFFLE and TWO_COLUMNS and picRatioCanCombine(imageTkTemp):
+                        nextImageTemp = nextPic(imageTemp)
+                        if nextImageTemp == '':
                             imageAddrCache.append(imageTemp)
                             lastImageAddr = imageTemp
                             imageCache.put(imageResize(imageTkTemp))
                         else:
-                            imageAddrCache.append(nextImageTemp)
-                            lastImageAddr = nextImageTemp
-                            imageCache.put(imageTogether(imageTkTemp, imageTkTemp2))
-                else:
-                    imageAddrCache.append(imageTemp)
-                    lastImageAddr = imageTemp
-                    imageCache.put(imageResize(imageTkTemp))
+                            imageTkTemp2 = Image.open(nextImageTemp)
+                            temp2TryTime = 0
+                            while not picRatioCanCombine(imageTkTemp2):
+                                nextImageTemp = nextPic(nextImageTemp)
+                                temp2TryTime = temp2TryTime + 1
+                                if temp2TryTime > 10:
+                                    break
+                                if nextImageTemp != '':
+                                    imageTkTemp2 = Image.open(nextImageTemp)
+                                else:
+                                    continue
+                            if temp2TryTime > 10:
+                                imageAddrCache.append(imageTemp)
+                                lastImageAddr = imageTemp
+                                imageCache.put(imageResize(imageTkTemp))
+                            else:
+                                imageAddrCache.append(nextImageTemp)
+                                lastImageAddr = nextImageTemp
+                                imageCache.put(imageTogether(imageTkTemp, imageTkTemp2))
+                    else:
+                        imageAddrCache.append(imageTemp)
+                        lastImageAddr = imageTemp
+                        imageCache.put(imageResize(imageTkTemp))
+                except:
+                    return 1
         else:
             if tryTime > 10:
                 return 1
@@ -562,114 +566,114 @@ def keyPress(event):  # 按键事件响应
             if keyInput == 'tab':
                 tabState = True
                 tabInput = ''
-            elif keyInput == 'd' or keyInput == 'a' or keyInput == 'z' or keyInput == 'x' or keyInput == 'c' or keyInput == 'v':
-                if not drawCancel and not keyControl:
-                    keyControl = True
+            elif not drawCancel:
+                if keyInput == 'd' or keyInput == 'a' or keyInput == 'z' or keyInput == 'x' or keyInput == 'c' or keyInput == 'v':
+                    if not keyControl:
+                        keyControl = True
+                        drawCancel = True
+                        lastImageAddr = nowImageAddr
+                        getImageTry = 0
+                        oneClicked = False
+                        if keyInput == 'd':  # 顺序下一张
+                            keyControlGroup[0] = 'nextPic'
+                            keyControlGroup[1] = nextPic(nowImageAddr)
+                        elif keyInput == 'a':  # 顺序上一张
+                            keyControlGroup[0] = 'previousPic'
+                            keyControlGroup[1] = previousPic(nowImageAddr)
+                        elif keyInput == 'z':  # 顺序上一个文件夹
+                            keyControlGroup[0] = 'previousFolder'
+                            keyControlGroup[1] = findLastImageInFolder(previousFolder(oneParentFolder(nowImageAddr)))
+                        elif keyInput == 'x':  # 顺序下一个文件夹
+                            keyControlGroup[0] = 'nextFolder'
+                            keyControlGroup[1] = findFirstImageInFolder(nextFolder(oneParentFolder(nowImageAddr)))
+                        elif keyInput == 'c':  # 顺序第一个文件
+                            keyControlGroup[0] = 'firstImage'
+                            keyControlGroup[1] = findFirstImageInFolder(oneParentFolder(nowImageAddr))
+                        elif keyInput == 'v':  # 顺序最后一个文件
+                            keyControlGroup[0] = 'lastImageAddr'
+                            keyControlGroup[1] = findLastImageInFolder(oneParentFolder(nowImageAddr))
+                        drawCancelRemoveAll()
+                        # print(keyControlGroup)
+                elif keyInput == 'space':  # 下一张
                     drawCancel = True
-                    lastImageAddr = nowImageAddr
-                    getImageTry = 0
-                    oneClicked = False
-                    if keyInput == 'd':  # 顺序下一张
-                        keyControlGroup[0] = 'nextPic'
-                        keyControlGroup[1] = nextPic(nowImageAddr)
-                    elif keyInput == 'a':  # 顺序上一张
-                        keyControlGroup[0] = 'previousPic'
-                        keyControlGroup[1] = previousPic(nowImageAddr)
-                    elif keyInput == 'z':  # 顺序上一个文件夹
-                        keyControlGroup[0] = 'previousFolder'
-                        keyControlGroup[1] = findLastImageInFolder(previousFolder(oneParentFolder(nowImageAddr)))
-                    elif keyInput == 'x':  # 顺序下一个文件夹
-                        keyControlGroup[0] = 'nextFolder'
-                        keyControlGroup[1] = findFirstImageInFolder(nextFolder(oneParentFolder(nowImageAddr)))
-                    elif keyInput == 'c':  # 顺序第一个文件
-                        keyControlGroup[0] = 'firstImage'
-                        keyControlGroup[1] = findFirstImageInFolder(oneParentFolder(nowImageAddr))
-                    elif keyInput == 'v':  # 顺序最后一个文件
-                        keyControlGroup[0] = 'lastImageAddr'
-                        keyControlGroup[1] = findLastImageInFolder(oneParentFolder(nowImageAddr))
-                    drawCancelRemoveAll()
-                    # print(keyControlGroup)
-            elif keyInput == 'space':  # 下一张
-                if not drawCancel:
-                    drawCancel = True
-                    # imageCache.get()
-                    # imageAddrCache.pop(0)
-            elif keyInput == 's':  # 暂停或播放
-                if not pauseAll:
-                    pauseAll = True
-                else:
-                    pauseAll = False
-            elif keyInput == 'q':  # 本文件夹内随机
-                if not oneClicked:
-                    playLevel = 0
+                        # imageCache.get()
+                        # imageAddrCache.pop(0)
+                elif keyInput == 's':  # 暂停或播放
+                    if not pauseAll:
+                        pauseAll = True
+                    else:
+                        pauseAll = False
+                elif keyInput == 'q':  # 本文件夹内随机
+                    if not oneClicked:
+                        playLevel = 0
+                        statePlay = STATE_FOLDER
+                        parentFolder = getParentFolder(nowImageAddr)
+                        getImageTry = 0
+                        oneClicked = False
+                        drawCancelRemoveAll()
+                elif keyInput == 'w':  # 上一级文件夹内随机
+                    playLevel = 1
                     statePlay = STATE_FOLDER
                     parentFolder = getParentFolder(nowImageAddr)
                     getImageTry = 0
                     oneClicked = False
                     drawCancelRemoveAll()
-            elif keyInput == 'w':  # 上一级文件夹内随机
-                playLevel = 1
-                statePlay = STATE_FOLDER
-                parentFolder = getParentFolder(nowImageAddr)
-                getImageTry = 0
-                oneClicked = False
-                drawCancelRemoveAll()
-            elif keyInput == 'e':  # 上二级文件夹内随机
-                getImageTry = 0
-                playLevel = 2
-                statePlay = STATE_FOLDER
-                oneClicked = False
-                parentFolder = getParentFolder(nowImageAddr)
-                drawCancelRemoveAll()
-            elif keyInput == 'r':  # 取消文件夹内随机
-                getImageTry = 0
-                playLevel = -1
-                statePlay = STATE_PLAY_ALL
-                oneClicked = False
-                drawCancelRemoveAll()
-            elif keyInput == 'shift_l':  # 幻灯片播放间隔+0.5秒
-                LOOP_TIME = LOOP_TIME + 500
-            elif keyInput == 'control_l':  # 幻灯片播放间隔-0.5秒
-                LOOP_TIME = LOOP_TIME - 500
-                if LOOP_TIME < 500:
-                    LOOP_TIME = 500
-            elif keyInput == 'quoteleft':  # 按下~取消库内播放
-                modeSelect = MODE_NORMAL
-                oneClicked = False
-            elif keyInput == 'f':  # 取消或开启随机播放
-                SHUFFLE = not SHUFFLE
-            elif keyInput[0] == 'f' and keyInput != 'f':  # F1 ~ F12 选择库的行数，并进入库内播放
-                if keyInput[1:].isdigit():
+                elif keyInput == 'e':  # 上二级文件夹内随机
                     getImageTry = 0
-                    select_row = int(keyInput[1:]) - 1
+                    playLevel = 2
+                    statePlay = STATE_FOLDER
+                    oneClicked = False
+                    parentFolder = getParentFolder(nowImageAddr)
+                    drawCancelRemoveAll()
+                elif keyInput == 'r':  # 取消文件夹内随机
+                    getImageTry = 0
+                    playLevel = -1
+                    statePlay = STATE_PLAY_ALL
+                    oneClicked = False
+                    drawCancelRemoveAll()
+                elif keyInput == 'shift_l':  # 幻灯片播放间隔+0.5秒
+                    LOOP_TIME = LOOP_TIME + 500
+                elif keyInput == 'control_l':  # 幻灯片播放间隔-0.5秒
+                    LOOP_TIME = LOOP_TIME - 500
+                    if LOOP_TIME < 500:
+                        LOOP_TIME = 500
+                elif keyInput == 'quoteleft':  # 按下~取消库内播放
+                    modeSelect = MODE_NORMAL
+                    oneClicked = False
+                elif keyInput == 'f':  # 取消或开启随机播放
+                    SHUFFLE = not SHUFFLE
+                elif keyInput[0] == 'f' and keyInput != 'f':  # F1 ~ F12 选择库的行数，并进入库内播放
+                    if keyInput[1:].isdigit():
+                        getImageTry = 0
+                        select_row = int(keyInput[1:]) - 1
+                        modeSelect = MODE_MY_SELECT
+                        statePlay = STATE_PLAY_ALL
+                        oneClicked = False
+                        drawCancelRemoveAll()
+                elif keyInput.isdigit():  # 1234567890 选择库的列数，并进入库内播放
+                    if int(keyInput) == 0:
+                        select_col = 9
+                    else:
+                        select_col = int(keyInput) - 1
+                    # select_col = (int(keyInput)+9) % 10
+                    getImageTry = 0
                     modeSelect = MODE_MY_SELECT
                     statePlay = STATE_PLAY_ALL
                     oneClicked = False
                     drawCancelRemoveAll()
-            elif keyInput.isdigit():  # 1234567890 选择库的列数，并进入库内播放
-                if int(keyInput) == 0:
-                    select_col = 9
-                else:
-                    select_col = int(keyInput) - 1
-                # select_col = (int(keyInput)+9) % 10
-                getImageTry = 0
-                modeSelect = MODE_MY_SELECT
-                statePlay = STATE_PLAY_ALL
-                oneClicked = False
-                drawCancelRemoveAll()
-            elif keyInput == 'return':  # 开始随机播放音乐
-                player.stop()
-                player.play(shuffleMusic())
-            elif keyInput == 'shift_r':  # 暂停或播放音乐
-                player.pauseOrPlay()
-            elif keyInput == 'right':  # 快进10秒
-                player.forward()
-            elif keyInput == 'left':  # 快退10秒
-                player.backward()
-            elif keyInput == 'up':  # 音量+5
-                player.volumeUp()
-            elif keyInput == 'down':  # 音量-5
-                player.volumeDown()
+                elif keyInput == 'return':  # 开始随机播放音乐
+                    player.stop()
+                    player.play(shuffleMusic())
+                elif keyInput == 'shift_r':  # 暂停或播放音乐
+                    player.pauseOrPlay()
+                elif keyInput == 'right':  # 快进10秒
+                    player.forward()
+                elif keyInput == 'left':  # 快退10秒
+                    player.backward()
+                elif keyInput == 'up':  # 音量+5
+                    player.volumeUp()
+                elif keyInput == 'down':  # 音量-5
+                    player.volumeDown()
         else:
             if keyInput == 'tab':
                 if tabInput:
@@ -698,7 +702,7 @@ def onConfigure(event):
 def findImage(folderTemp):
     global lastImageAddr, parentFolder
     if os.path.isdir(folderTemp):
-        for i in range(10):
+        for i in range(15):
             file_list = os.listdir(folderTemp)
             if len(file_list) == 0:
                 return findImage(oneParentFolder(folderTemp))
@@ -785,12 +789,10 @@ def getImage():
         return lastImageAddr
 
 
-threadRead = threading.Thread(target=fillImageCache, args=())
-threadRead.setDaemon(True)
 
 
 def draw():
-    global drawCancel, lastImageAddr, drawStep, nowImageAddr, SCREEN_WIDTH, SCREEN_HEIGHT, threadRead
+    global drawCancel, lastImageAddr, drawStep, nowImageAddr, SCREEN_WIDTH, SCREEN_HEIGHT, threadRead, firstRun
     if not pauseAll:
         if drawCancel:
             drawCancel = False
@@ -801,15 +803,19 @@ def draw():
                 SCREEN_WIDTH = top.winfo_screenwidth()
                 SCREEN_HEIGHT = top.winfo_screenheight()
                 top.geometry("%dx%d" % (SCREEN_WIDTH, SCREEN_HEIGHT))
-            while (not imageCache.full()) and (not threadRead.join()):
-                pass
-            photo = ImageTk.PhotoImage(imageCache.get())
-            label.configure(image=photo)
-            label.image = photo
-            label.place(relx=.5, rely=.5, anchor="center")
-            nowImageAddr = imageAddrCache[0]
-            imageAddrCache.pop(0)
-            # top.update()
+            if firstRun:
+                threadRead.start()
+                firstRun = False
+            if threadRead.is_alive():
+                threadRead.join(3)
+            if not imageCache.empty():
+                photo = ImageTk.PhotoImage(imageCache.get())
+                label.configure(image=photo)
+                label.image = photo
+                label.place(relx=.5, rely=.5, anchor="center")
+                nowImageAddr = imageAddrCache[0]
+                imageAddrCache.pop(0)
+                # top.update()
             threadRead = threading.Thread(target=fillImageCache, args=())
             threadRead.setDaemon(True)
             threadRead.start()
@@ -819,7 +825,6 @@ def draw():
         else:
             drawStep = drawStep + 1
     top.after(LOOP_STEP, draw)
-
 
 if __name__ == '__main__':
     if len(sys.argv) <= 1:
@@ -853,6 +858,8 @@ if __name__ == '__main__':
     if imageCache.empty():
         if fillImageCache() == 1:
             print("Cannot find photo.")
+    firstRun = True
+    threadRead = threading.Thread(target=fillImageCache, args=())
+    threadRead.setDaemon(True)
     top.after(0, draw)
     top.mainloop()
-
