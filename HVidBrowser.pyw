@@ -31,6 +31,7 @@ except:
 
 if platform.system() == 'Windows':
     import win32com.client
+    import pythoncom
     isWindows = True
 else:
     isWindows = False
@@ -113,11 +114,6 @@ barWidth = 0
 barHeight = 0
 
 top = tk.Tk()
-if isWindows:
-    shell = win32com.client.Dispatch("WScript.Shell")
-else:
-    shell = ''
-
 
 def generateScreenPosition():
     if not FULL_SCREEN:
@@ -168,7 +164,7 @@ def findName(name, folder):
         return False
 
 
-def findFolder(name, folderPath):
+def findFolder(name, folderPath, level=1):
     if os.path.isdir(folderPath):
         file_list = os.listdir(folderPath)
         for fld in file_list:
@@ -176,26 +172,29 @@ def findFolder(name, folderPath):
             if os.path.isdir(temp) and folderOK(temp):
                 if findName(name, os.path.split(temp)[1]):
                     return temp
-        for fld in file_list:
-            temp = getRealLnk(os.path.join(folderPath, fld))
-            if os.path.isdir(temp) and folderOK(temp):
-                resultFind = findFolder(name, temp)
-                if resultFind:
-                    return True
+        if level >= 1:
+            for fld in file_list:
+                temp = getRealLnk(os.path.join(folderPath, fld))
+                if os.path.isdir(temp) and folderOK(temp):
+                    resultFind = findFolder(name, temp, level-1)
+                    if resultFind:
+                        return temp
+        else:
+            return ''
     else:
         return ''
     return ''
 
 
 def isLnk(name):
-    return name.lower().endswith('.lnk')
+    return name.lower().endswith('.lnk') or name.lower().endswith('.url')
 
 
 def readLnk(lnk):
     if isWindows:
-        shortcut = shell.CreateShortCut(lnk)
-        # print(shortcut.Targetpath)
-        return shortcut.Targetpath
+        pythoncom.CoInitialize()
+        shell = win32com.client.Dispatch("WScript.Shell")
+        return shell.CreateShortCut(lnk).Targetpath
     else:
         return ''
 
@@ -566,9 +565,9 @@ def onConfigure(event):
         SCREEN_WIDTH = event.width
         SCREEN_HEIGHT = event.height
         updateScreenInfo()
-        top.canvas.configure(width=videoWidth, height=HEIGHT_PROGRESS_BAR)
+        top.canvas.configure(width=videoWidth, height=HEIGHT_PROGRESS_BAR, cursor='none')
         try:
-            top.showPlayer.configure(width=videoWidth, height=videoHeight)
+            top.showPlayer.configure(width=videoWidth, height=videoHeight, cursor='none')
         except:
             pass
 
@@ -709,6 +708,7 @@ def videoEnd():
                                 top.showPlayer = tk.Canvas(top, width=videoWidth, height=videoHeight, bd=0,
                                                            highlightthickness=0, bg=BACKGROUND_COLOR)
                             top.showPlayer.pack(side='top')
+                            top.showPlayer.configure(cursor='none')
                             top.update()
                             if not top.showPlayer.winfo_ismapped():
                                 time.sleep(0.05)
@@ -744,7 +744,7 @@ if __name__ == '__main__':
             FILE_LIB.append(DEFAULT_LIB)
     else:
         for folder in sys.argv[1:]:
-            FILE_LIB.append(folder)
+            FILE_LIB.append(getRealLnk(folder))
     if FULL_SCREEN:
         SCREEN_WIDTH = top.winfo_screenwidth()
         SCREEN_HEIGHT = top.winfo_screenheight()
@@ -755,11 +755,10 @@ if __name__ == '__main__':
         top.bind("<Configure>", onConfigure)
     screenStartX, screenStartY = generateScreenPosition()
     top.geometry("%dx%d+%d+%d" % (SCREEN_WIDTH, SCREEN_HEIGHT, screenStartX, screenStartY))
-    top.configure(bg=BACKGROUND_COLOR)
+    top.configure(bg=BACKGROUND_COLOR,cursor='none')
     top.focus_set()
     top.bind("<Key>", keyPress)
     # top.bind("<Button-1>",controlProgressBar)
-    top.configure(cursor="none")
     top.player = vlcVidPlayer.Player()
     updateScreenInfo()
     if PHONE_SUPPORT:
